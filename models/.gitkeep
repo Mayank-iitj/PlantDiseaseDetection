@@ -1,0 +1,5 @@
+# This file ensures the models directory is tracked by git
+# Place your trained model files here:
+# - best_model.h5
+# - vgg16_model.h5
+# - etc.
