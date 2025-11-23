@@ -4,7 +4,11 @@ from tensorflow import keras
 from PIL import Image
 import numpy as np
 import os
-import gdown
+try:
+    from model_loader import load_model_with_download
+    USE_MODEL_LOADER = True
+except ImportError:
+    USE_MODEL_LOADER = False
 
 # Page configuration
 st.set_page_config(
@@ -63,11 +67,43 @@ def load_model():
     # Create models directory if it doesn't exist
     os.makedirs('models', exist_ok=True)
     
-    # If model doesn't exist locally, provide instructions
+    # If model doesn't exist locally, try to download it
     if not os.path.exists(model_path):
-        st.warning("⚠️ Model file not found. Please place your trained model at `models/best_model.h5`")
-        st.info("You can download a pre-trained model from the Kaggle links provided in the README")
-        return None
+        st.info("📥 Model not found locally. Attempting to download from Hugging Face...")
+        try:
+            import gdown
+            # Using a public model link - replace with your own uploaded model
+            # For now, showing instructions
+            st.warning("⚠️ Model file not found.")
+            st.markdown("""
+            ### Setup Required for Deployment:
+            
+            **Option 1: Upload model to Hugging Face** (Recommended)
+            1. Create account at https://huggingface.co
+            2. Upload your `best_model.h5` file
+            3. Get the direct download link
+            4. Update the code with the link
+            
+            **Option 2: Use GitHub LFS**
+            ```bash
+            git lfs install
+            git lfs track "*.h5"
+            git add models/best_model.h5
+            git commit -m "Add model file"
+            git push
+            ```
+            
+            **Option 3: Use Google Drive**
+            1. Upload model to Google Drive
+            2. Make it publicly accessible
+            3. Use the file ID with gdown
+            
+            **For local testing**, place your model at `models/best_model.h5`
+            """)
+            return None
+        except Exception as e:
+            st.error(f"Error downloading model: {str(e)}")
+            return None
     
     try:
         model = keras.models.load_model(model_path)
@@ -133,7 +169,10 @@ def main():
         """)
     
     # Load model
-    model = load_model()
+    if USE_MODEL_LOADER:
+        model = load_model_with_download()
+    else:
+        model = load_model()
     
     if model is None:
         st.error("❌ Cannot proceed without a model. Please add your trained model to continue.")

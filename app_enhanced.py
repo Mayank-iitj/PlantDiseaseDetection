@@ -86,8 +86,33 @@ def load_model():
     model_path = 'models/best_model.h5'
     os.makedirs('models', exist_ok=True)
     
+    # If model doesn't exist locally, try to download it
     if not os.path.exists(model_path):
-        return None
+        st.info("📥 Downloading model from cloud storage...")
+        try:
+            import gdown
+            # TODO: Replace with your model's public URL
+            # Example for Google Drive:
+            # file_id = 'YOUR_GOOGLE_DRIVE_FILE_ID'
+            # url = f'https://drive.google.com/uc?id={file_id}'
+            # gdown.download(url, model_path, quiet=False)
+            
+            # For now, show setup instructions
+            st.warning("⚠️ Model file not found. Please configure model download.")
+            st.info("""
+            **To enable automatic model download:**
+            
+            1. Upload your `best_model.h5` to Google Drive
+            2. Make it publicly accessible (Anyone with link can view)
+            3. Get the file ID from the share link
+            4. Set it as a Streamlit secret or environment variable
+            
+            **Alternative:** Use Hugging Face Hub or GitHub LFS
+            """)
+            return None
+        except Exception as e:
+            st.error(f"Error setting up model: {str(e)}")
+            return None
     
     try:
         model = keras.models.load_model(model_path)
