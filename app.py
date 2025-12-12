@@ -5,12 +5,11 @@ from PIL import Image
 import numpy as np
 import os
 from io import BytesIO
-import cv2  # Fallback decoder for images PIL cannot parse
 try:
-    from model_loader import load_model_with_download
-    USE_MODEL_LOADER = True
+    import cv2  # Fallback decoder for images PIL cannot parse
+    HAS_CV2 = True
 except ImportError:
-    USE_MODEL_LOADER = False
+    HAS_CV2 = False
 
 # Page configuration
 st.set_page_config(
@@ -23,52 +22,18 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    """Load the trained model"""
+    """Load the trained model from local storage"""
     model_path = 'models/best_model.h5'
     
-    # Create models directory if it doesn't exist
-    os.makedirs('models', exist_ok=True)
-    
-    # If model doesn't exist locally, try to download it
     if not os.path.exists(model_path):
-        st.info("📥 Model not found locally. Attempting to download from Hugging Face...")
-        try:
-            import gdown
-            # Using a public model link - replace with your own uploaded model
-            # For now, showing instructions
-            st.warning("⚠️ Model file not found.")
-            st.markdown("""
-            ### Setup Required for Deployment:
-            
-            **Option 1: Upload model to Hugging Face** (Recommended)
-            1. Create account at https://huggingface.co
-            2. Upload your `best_model.h5` file
-            3. Get the direct download link
-            4. Update the code with the link
-            
-            **Option 2: Use GitHub LFS**
-            ```bash
-            git lfs install
-            git lfs track "*.h5"
-            git add models/best_model.h5
-            git commit -m "Add model file"
-            git push
-            ```
-            
-            **Option 3: Use Google Drive**
-            1. Upload model to Google Drive
-            2. Make it publicly accessible
-            3. Use the file ID with gdown
-            
-            **For local testing**, place your model at `models/best_model.h5`
-            """)
-            return None
-        except Exception as e:
-            st.error(f"Error downloading model: {str(e)}")
-            return None
+        st.error(f"❌ Model file not found at `{model_path}`")
+        st.info("Please ensure the model file exists in the models directory.")
+        return None
     
     try:
         model = keras.models.load_model(model_path)
+        model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+        st.success(f"✅ Model loaded successfully ({model_size_mb:.1f} MB)")
         return model
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
@@ -150,25 +115,10 @@ def main():
         """)
     
     # Load model
-    if USE_MODEL_LOADER:
-        model = load_model_with_download()
-    else:
-        model = load_model()
+    model = load_model()
     
     if model is None:
-        st.error("❌ Cannot proceed without a model. Please add your trained model to continue.")
-        st.markdown("""
-        ### How to add your model:
-        1. Create a `models` folder in the project directory
-        2. Place your trained model file as `models/best_model.h5`
-        3. Refresh this page
-        
-        You can download pre-trained models from:
-        - [VGG16 Model](https://www.kaggle.com/datasets/gyanbardhan/vgg16)
-        - [VGG19 Model](https://www.kaggle.com/datasets/clay108/vgg19-123)
-        - [AlexNet Model](https://www.kaggle.com/datasets/gyanbardhan/alexnet123)
-        """)
-        return
+        st.stop()
     
     # File uploader
     uploaded_file = st.file_uploader(
