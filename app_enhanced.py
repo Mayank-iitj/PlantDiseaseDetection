@@ -85,14 +85,14 @@ def load_model():
     model_path = 'models/best_model.h5'
     
     if not os.path.exists(model_path):
-        st.error(f"❌ Model file not found at `{model_path}`")
+        st.error(f"Model file not found at `{model_path}`")
         st.info("Please ensure the model file exists in the models directory.")
         return None
     
     try:
         model = keras.models.load_model(model_path)
         model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
-        st.success(f"✅ Model loaded successfully ({model_size_mb:.1f} MB)")
+        st.success(f"Model loaded successfully ({model_size_mb:.1f} MB)")
         return model
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
