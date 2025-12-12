@@ -15,7 +15,6 @@ try:
     CLAHE_AVAILABLE = True
 except ImportError:
     CLAHE_AVAILABLE = False
-    st.warning("OpenCV not available. Install it for better preprocessing: pip install opencv-python")
 
 # Import utilities if available
 try:
@@ -82,40 +81,18 @@ CLASS_LABELS = [
 
 @st.cache_resource
 def load_model():
-    """Load the trained model"""
+    """Load the trained model from local storage"""
     model_path = 'models/best_model.h5'
-    os.makedirs('models', exist_ok=True)
     
-    # If model doesn't exist locally, try to download it
     if not os.path.exists(model_path):
-        st.info("📥 Downloading model from cloud storage...")
-        try:
-            import gdown
-            # TODO: Replace with your model's public URL
-            # Example for Google Drive:
-            # file_id = 'YOUR_GOOGLE_DRIVE_FILE_ID'
-            # url = f'https://drive.google.com/uc?id={file_id}'
-            # gdown.download(url, model_path, quiet=False)
-            
-            # For now, show setup instructions
-            st.warning("⚠️ Model file not found. Please configure model download.")
-            st.info("""
-            **To enable automatic model download:**
-            
-            1. Upload your `best_model.h5` to Google Drive
-            2. Make it publicly accessible (Anyone with link can view)
-            3. Get the file ID from the share link
-            4. Set it as a Streamlit secret or environment variable
-            
-            **Alternative:** Use Hugging Face Hub or GitHub LFS
-            """)
-            return None
-        except Exception as e:
-            st.error(f"Error setting up model: {str(e)}")
-            return None
+        st.error(f"❌ Model file not found at `{model_path}`")
+        st.info("Please ensure the model file exists in the models directory.")
+        return None
     
     try:
         model = keras.models.load_model(model_path)
+        model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
+        st.success(f"✅ Model loaded successfully ({model_size_mb:.1f} MB)")
         return model
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
@@ -190,31 +167,12 @@ def main():
         3. 🔍 View prediction results
         4. 💊 Get treatment recommendations
         """)
-        
-        st.markdown("---")
-        st.header("🔗 Links")
-        st.markdown("""
-        - [🤗 Hugging Face Demo](https://huggingface.co/spaces/gyanbardhan123/PlantDiseaseDetection)
-        - [📁 GitHub Repository](https://github.com/Gyanbardhan/PlantDiseaseDetection)
-        - [📚 Documentation](Documentation.pdf)
-        """)
     
     # Load model
     model = load_model()
     
     if model is None:
-        st.error("❌ Model file not found!")
-        st.markdown("""
-        ### 🛠️ Setup Instructions:
-        1. Create a `models` folder
-        2. Download a pre-trained model:
-           - [VGG16 Model](https://www.kaggle.com/datasets/gyanbardhan/vgg16)
-           - [VGG19 Model](https://www.kaggle.com/datasets/clay108/vgg19-123)
-           - [AlexNet Model](https://www.kaggle.com/datasets/gyanbardhan/alexnet123)
-        3. Place it as `models/best_model.h5`
-        4. Refresh this page
-        """)
-        return
+        st.stop()
     
     # File uploader
     st.markdown("### 📤 Upload Plant Leaf Image")
