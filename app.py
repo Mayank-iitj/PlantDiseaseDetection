@@ -4,6 +4,8 @@ from tensorflow import keras
 from PIL import Image
 import numpy as np
 import os
+from io import BytesIO
+import cv2  # Fallback decoder for images PIL cannot parse
 try:
     from model_loader import load_model_with_download
     USE_MODEL_LOADER = True
@@ -17,47 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Class labels for plant diseases
-CLASS_LABELS = [
-    'Apple___Apple_scab',
-    'Apple___Black_rot',
-    'Apple___Cedar_apple_rust',
-    'Apple___healthy',
-    'Blueberry___healthy',
-    'Cherry_(including_sour)___Powdery_mildew',
-    'Cherry_(including_sour)___healthy',
-    'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot',
-    'Corn_(maize)___Common_rust_',
-    'Corn_(maize)___Northern_Leaf_Blight',
-    'Corn_(maize)___healthy',
-    'Grape___Black_rot',
-    'Grape___Esca_(Black_Measles)',
-    'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)',
-    'Grape___healthy',
-    'Orange___Haunglongbing_(Citrus_greening)',
-    'Peach___Bacterial_spot',
-    'Peach___healthy',
-    'Pepper,_bell___Bacterial_spot',
-    'Pepper,_bell___healthy',
-    'Potato___Early_blight',
-    'Potato___Late_blight',
-    'Potato___healthy',
-    'Raspberry___healthy',
-    'Soybean___healthy',
-    'Squash___Powdery_mildew',
-    'Strawberry___Leaf_scorch',
-    'Strawberry___healthy',
-    'Tomato___Bacterial_spot',
-    'Tomato___Early_blight',
-    'Tomato___Late_blight',
-    'Tomato___Leaf_Mold',
-    'Tomato___Septoria_leaf_spot',
-    'Tomato___Spider_mites Two-spotted_spider_mite',
-    'Tomato___Target_Spot',
-    'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
-    'Tomato___Tomato_mosaic_virus',
-    'Tomato___healthy'
-]
+# Binary classification model - detects healthy vs diseased plants
 
 @st.cache_resource
 def load_model():
@@ -112,13 +74,13 @@ def load_model():
         st.error(f"Error loading model: {str(e)}")
         return None
 
-def preprocess_image(image, target_size=(224, 224)):
+def preprocess_image(image, target_size=(150, 150)):
     """Preprocess the uploaded image"""
     # Convert to RGB if necessary
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    # Resize image
+    # Resize image to match model input (150x150)
     image = image.resize(target_size)
     
     # Convert to array and normalize
@@ -131,13 +93,22 @@ def preprocess_image(image, target_size=(224, 224)):
     return img_array
 
 def predict_disease(model, image):
-    """Make prediction on the image"""
+    """Make prediction on the image - Binary classification (Healthy vs Diseased)"""
     processed_image = preprocess_image(image)
     predictions = model.predict(processed_image)
-    predicted_class = np.argmax(predictions[0])
-    confidence = predictions[0][predicted_class]
     
-    return CLASS_LABELS[predicted_class], confidence, predictions[0]
+    # Binary classification: output is probability of being diseased
+    disease_probability = float(predictions[0][0])
+    
+    # Threshold at 0.5 for binary classification
+    if disease_probability > 0.5:
+        predicted_class = "Diseased"
+        confidence = disease_probability
+    else:
+        predicted_class = "Healthy"
+        confidence = 1.0 - disease_probability
+    
+    return predicted_class, confidence, disease_probability
 
 def main():
     # Header
@@ -151,21 +122,31 @@ def main():
     with st.sidebar:
         st.header("About")
         st.info("""
-        This system uses state-of-the-art CNN architectures including:
-        - VGG16/VGG19
-        - ResNet
-        - DenseNet
-        - EfficientNet
-        - ConvNextLarge
-        - AlexNet
+        This system uses a VGG19-based CNN model for binary classification:
+        - **Healthy**: Plant leaf is healthy
+        - **Diseased**: Plant leaf shows signs of disease
+        
+        Model Details:
+        - Architecture: VGG19 (Transfer Learning)
+        - Input: 150x150 RGB images
+        - Output: Binary classification
         """)
         
         st.header("Instructions")
         st.markdown("""
         1. Upload a clear image of a plant leaf
-        2. Wait for the model to process
-        3. View the prediction and confidence score
-        4. Check top predictions for more details
+        2. Wait for the model to process (usually < 1 second)
+        3. View the prediction: Healthy or Diseased
+        4. Check the confidence score
+        5. Review the probability distribution
+        """)
+        
+        st.header("Model Information")
+        st.markdown("""
+        - **Model Type**: VGG19 Transfer Learning
+        - **Input Size**: 150x150 pixels
+        - **Classes**: Binary (Healthy/Diseased)
+        - **Framework**: TensorFlow/Keras
         """)
     
     # Load model
@@ -199,49 +180,79 @@ def main():
     if uploaded_file is not None:
         # Create two columns
         col1, col2 = st.columns(2)
-        
+
+        # Robust image loader helper defined inline for clarity
+        def load_uploaded_image(file_obj):
+            # Reset pointer and read bytes once
+            try:
+                file_obj.seek(0)
+            except Exception:
+                pass
+            raw_bytes = file_obj.read()
+            if not raw_bytes:
+                raise ValueError("Uploaded file is empty")
+
+            # Skip signature validation - just try to decode
+            # Many valid images have non-standard headers but decode fine
+
+            # First attempt: PIL
+            try:
+                img = Image.open(BytesIO(raw_bytes))
+                img.load()  # Force loading to catch errors early
+                return img
+            except Exception as pil_err:
+                # Fallback: OpenCV
+                try:
+                    np_arr = np.frombuffer(raw_bytes, np.uint8)
+                    cv_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    if cv_img is None:
+                        raise ValueError("OpenCV failed to decode image")
+                    cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                    return Image.fromarray(cv_img)
+                except Exception as cv_err:
+                    raise ValueError(f"PIL error: {pil_err}; OpenCV error: {cv_err}")
+
         with col1:
             st.subheader("Uploaded Image")
-            image = Image.open(uploaded_file)
-            st.image(image, use_container_width=True)
-        
+            try:
+                image = load_uploaded_image(uploaded_file)
+                st.image(image, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error loading image: {e}")
+                st.error(f"File type: {uploaded_file.type}, Size: {uploaded_file.size} bytes")
+                # Show first 16 bytes for debugging (hex)
+                try:
+                    uploaded_file.seek(0)
+                    dbg_bytes = uploaded_file.read(16)
+                    st.code(dbg_bytes.hex(' '), language='text')
+                except Exception:
+                    pass
+                st.info("If this is a real PNG/JPEG, ensure it is not corrupted. Try re-saving the file.")
+                st.stop()
+
         with col2:
             st.subheader("Prediction Results")
-            
             with st.spinner("Analyzing image..."):
                 try:
-                    # Make prediction
-                    predicted_label, confidence, all_predictions = predict_disease(model, image)
-                    
-                    # Parse the prediction
-                    parts = predicted_label.split('___')
-                    plant_name = parts[0].replace('_', ' ')
-                    disease_name = parts[1].replace('_', ' ') if len(parts) > 1 else 'Unknown'
-                    
-                    # Display results
-                    if disease_name.lower() == 'healthy':
-                        st.success(f"✅ **{plant_name}** - Healthy!")
+                    predicted_label, confidence, disease_prob = predict_disease(model, image)
+                    if predicted_label.lower() == 'healthy':
+                        st.success("✅ **Plant is Healthy!**")
                     else:
-                        st.warning(f"⚠️ **{plant_name}** - {disease_name}")
-                    
+                        st.warning("⚠️ **Plant Disease Detected!**")
+                    st.metric("Classification", predicted_label)
                     st.metric("Confidence", f"{confidence * 100:.2f}%")
-                    
-                    # Show progress bar for confidence
                     st.progress(float(confidence))
-                    
-                    # Show top 5 predictions
-                    st.subheader("Top 5 Predictions")
-                    top_5_idx = np.argsort(all_predictions)[-5:][::-1]
-                    
-                    for idx in top_5_idx:
-                        label = CLASS_LABELS[idx]
-                        prob = all_predictions[idx]
-                        parts = label.split('___')
-                        display_name = f"{parts[0]} - {parts[1]}" if len(parts) > 1 else label
-                        st.write(f"**{display_name}**: {prob * 100:.2f}%")
-                    
+                    st.subheader("Prediction Details")
+                    st.write(f"**Disease Probability**: {disease_prob * 100:.2f}%")
+                    st.write(f"**Healthy Probability**: {(1 - disease_prob) * 100:.2f}%")
+                    import pandas as pd
+                    chart_data = pd.DataFrame({
+                        'Category': ['Healthy', 'Diseased'],
+                        'Probability': [(1 - disease_prob) * 100, disease_prob * 100]
+                    })
+                    st.bar_chart(chart_data.set_index('Category'))
                 except Exception as e:
-                    st.error(f"Error during prediction: {str(e)}")
+                    st.error(f"Error during prediction: {e}")
                     st.exception(e)
     
     # Footer
@@ -249,7 +260,6 @@ def main():
     st.markdown("""
     <div style='text-align: center'>
         <p>Developed for sustainable agriculture and food security 🌱</p>
-        <p><a href='https://huggingface.co/spaces/gyanbardhan123/PlantDiseaseDetection'>Visit our Hugging Face Space</a></p>
     </div>
     """, unsafe_allow_html=True)
 
